@@ -110,7 +110,8 @@ main { display: grid; gap: 28px; padding-bottom: 80px; }
 .rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }
 .rules div { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; font-size: 14.5px; line-height: 1.55; }
 .rules b { display: block; font-family: var(--f-display); font-size: 15.5px; margin-bottom: 2px; }
-footer { color: var(--muted); font-size: 13.5px; padding-bottom: 40px; }
+footer { color: var(--muted); font-size: 13.5px; padding-bottom: 40px; display: grid; gap: 6px; }
+footer .credit { font-family: var(--f-display); font-weight: 600; font-size: 15px; color: var(--ink); text-align: center; border-top: 1px solid var(--line); padding-top: 14px; margin-top: 8px; }
 
 /* tabs: Prompt tool | example gallery */
 .tabbar { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); margin-bottom: 24px; }
@@ -188,7 +189,7 @@ footer { color: var(--muted); font-size: 13.5px; padding-bottom: 40px; }
     </div>
   </article>
 </section>
-<footer class="wrap">สิ่งที่กรอกเก็บไว้ในเบราว์เซอร์ของคุณเท่านั้น · ข้อความตอบของ AI แต่ละตัวอาจต่างกัน ปรับ Prompt ได้ตามต้องการ</footer>
+<footer class="wrap"><p>สิ่งที่กรอกเก็บไว้ในเบราว์เซอร์ของคุณเท่านั้น · ข้อความตอบของ AI แต่ละตัวอาจต่างกัน ปรับ Prompt ได้ตามต้องการ</p><p class="credit">วิทยากรโดย Aj. NesT the Series</p></footer>
 
 <script>
 (function () {

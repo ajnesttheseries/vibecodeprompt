@@ -72,10 +72,24 @@
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
     .back-link:hover { background: rgba(255,255,255,0.22); }
+    /* เครดิตวิทยากร ด้านล่างสุดของหน้า */
+    .credit {
+      position: fixed;
+      bottom: 10px;
+      left: 0;
+      right: 0;
+      z-index: 10;
+      text-align: center;
+      font-size: 15px;
+      color: rgba(255,255,255,0.75);
+      pointer-events: none;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
   </style>
 </head>
 <body>
   <a class="back-link" href="../index.html#examples">← กลับหน้าหลัก</a>
+  <div class="credit">วิทยากรโดย Aj. NesT the Series</div>
   <script>
     // --- ตัวแปรควบคุมสถานะแอป ---
     // สถานะ: START -> COUNTDOWN -> ALERT -> STRETCHING -> (วนกลับ COUNTDOWN)
