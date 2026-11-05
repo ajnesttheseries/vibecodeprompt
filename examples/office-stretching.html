@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Office Stretching App</title>
+  
+  <!-- โหลด p5.js สำหรับกราฟิกและโครงสร้างแอป -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.js"></script>
+  <!-- โหลด ml5.js สำหรับ AI ตรวจจับท่าทาง (BodyPose) -->
+  <script src="https://unpkg.com/ml5@1/dist/ml5.min.js"></script>
+  <!-- โหลด Tone.js สำหรับสร้างเสียงสังเคราะห์ (Sound Effects) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  
+  <style>
+    /* ตั้งค่าให้หน้าเว็บเต็มจอ พื้นหลังสีเข้ม และไม่มี Scrollbar */
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background-color: #1a1a1a;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    canvas {
+      display: block;
+    }
+    /* ข้อความตอนโหลดโมเดล AI */
+    #p5_loading {
+      color: white;
+      font-size: 24px;
+      text-align: center;
+      margin-top: 20%;
+    }
+    
+    /* ตกแต่งช่องกรอกเวลาและปุ่ม */
+    .time-input {
+      font-size: 20px;
+      padding: 8px;
+      border-radius: 8px;
+      border: none;
+      text-align: center;
+      width: 80px;
+      outline: none;
+    }
+    .ok-button {
+      font-size: 20px;
+      padding: 8px 20px;
+      border-radius: 8px;
+      border: none;
+      background-color: #4696ff;
+      color: white;
+      cursor: pointer;
+      margin-left: 10px;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .ok-button:hover {
+      background-color: #2b7cf0;
+    }
+    /* ปุ่มกลับหน้าหลัก (เพิ่มสำหรับหน้าตัวอย่าง) */
+    .back-link {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 10;
+      font-size: 15px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.12);
+      color: #fff;
+      text-decoration: none;
+      border: 1px solid rgba(255,255,255,0.25);
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .back-link:hover { background: rgba(255,255,255,0.22); }
+  </style>
+</head>
+<body>
+  <a class="back-link" href="../index.html#examples">← กลับหน้าหลัก</a>
+  <script>
+    // --- ตัวแปรควบคุมสถานะแอป ---
+    // สถานะ: START -> COUNTDOWN -> ALERT -> STRETCHING -> (วนกลับ COUNTDOWN)
+    let appState = 'START'; 
+    
+    // ตั้งเวลาสำหรับทดสอบ (3 นาที = 180 วินาที, แก้เป็น 5 สำหรับทดสอบไวๆ)
+    let countdownTime = 180; 
+    let startTime;
+    let completedSets = 0;
+    let hasPlayedAlert = false; // ป้องกันเสียงเตือนรันซ้ำ
+
+    // --- ตัวแปร AI และกล้อง ---
+    let video;
+    let bodyPose;
+    let poses = [];
+
+    // --- ตัวแปรเสียง (Tone.js) ---
+    let synth;
+
+    // --- ตัวแปรช่องกรอกข้อมูล ---
+    let timeInput;
+    let okButton;
+
+    // --- ตัวแปรระบบพายืดเหยียด ---
+    let stretchingPoses = [
+      { name: "ท่าที่ 1: ชูแขนขึ้นสุด (ยืดไหล่และหลัง)", holdTime: 3 },
+      { name: "ท่าที่ 2: พนมมือระดับอก (ยืดข้อมือและแขน)", holdTime: 3 },
+      { name: "ท่าที่ 3: เอียงคอไปทางซ้าย (ยืดคอด้านขวา)", holdTime: 3 },
+      { name: "ท่าที่ 4: เอียงคอไปทางขวา (ยืดคอด้านซ้าย)", holdTime: 3 },
+      { name: "ท่าที่ 5: เอามือแตะไหล่ฝั่งตรงข้าม (ยืดสะบัก)", holdTime: 3 }
+    ];
+    let currentPoseIndex = 0;
+    let currentHoldTime = 0; 
+
+    // 1. ฟังก์ชันโหลดก่อนเริ่ม
+    function preload() {
+      // โหลดโมเดล BodyPose
+      bodyPose = ml5.bodyPose();
+    }
+
+    // 2. ฟังก์ชันตั้งค่าเริ่มต้น
+    function setup() {
+      createCanvas(windowWidth, windowHeight);
+      textAlign(CENTER, CENTER);
+
+      // สร้างวิดีโอแต่ซ่อนไว้ (เราจะวาดลง Canvas แทน)
+      video = createCapture(VIDEO);
+      video.size(640, 480);
+      video.hide();
+
+      // สั่งให้ AI เริ่มตรวจจับจากกล้อง
+      bodyPose.detectStart(video, gotPoses);
+
+      // สร้างช่องกรอกเวลาและปุ่ม OK (ซ่อนไว้ก่อน จะแสดงในหน้า Start)
+      timeInput = createInput('3');
+      timeInput.addClass('time-input');
+      timeInput.hide();
+
+      okButton = createButton('OK เริ่มเลย');
+      okButton.addClass('ok-button');
+      okButton.hide();
+      okButton.mousePressed(startApp);
+    }
+
+    // รับข้อมูลพิกัดจากกล้อง
+    function gotPoses(results) {
+      poses = results;
+    }
+
+    // 3. ฟังก์ชันวาดหน้าจอ (Loop หลัก)
+    function draw() {
+      background(30);
+
+      if (appState === 'START') {
+        drawStartScreen();
+      } else if (appState === 'COUNTDOWN') {
+        drawCountdownScreen();
+      } else if (appState === 'ALERT') {
+        drawAlertScreen();
+      } else if (appState === 'STRETCHING') {
+        drawStretchingScreen();
+      }
+    }
+
+    // --- ส่วนออกแบบหน้าจอต่างๆ ---
+
+    function drawStartScreen() {
+      fill(255);
+      textSize(48);
+      text("Office Stretching App", width / 2, height / 2 - 100);
+      
+      textSize(24);
+      fill(200);
+      text("แอปพลิเคชันเตือนและพายืดเหยียดลดออฟฟิศซินโดรม", width / 2, height / 2 - 40);
+
+      fill(255);
+      textSize(20);
+      text("กำหนดเวลาพัก (นาที):", width / 2, height / 2 + 20);
+
+      // แสดงและจัดตำแหน่งช่องกรอกและปุ่มให้ตรงกลาง
+      timeInput.show();
+      okButton.show();
+      timeInput.position(width / 2 - 110, height / 2 + 50);
+      okButton.position(width / 2 + 5, height / 2 + 50);
+    }
+
+    // ฟังก์ชันเมื่อกดปุ่ม OK เริ่มต้น
+    async function startApp() {
+      // ดึงค่าจากช่องกรอกเวลา
+      let mins = parseFloat(timeInput.value());
+      if (isNaN(mins) || mins <= 0) mins = 3; // หากไม่ได้กรอกหรือกรอกผิดให้ใช้ค่าเริ่มต้น 3 นาที
+      
+      countdownTime = Math.floor(mins * 60);
+
+      // เริ่มต้น Audio Context สำหรับ Tone.js
+      await Tone.start();
+      synth = new Tone.PolySynth(Tone.Synth).toDestination();
+      
+      // ซ่อนช่องกรอกและปุ่ม
+      timeInput.hide();
+      okButton.hide();
+      
+      // เปลี่ยนสถานะและเริ่มจับเวลา
+      appState = 'COUNTDOWN';
+      startTime = millis(); 
+    }
+
+    function drawCountdownScreen() {
+      let elapsedTime = floor((millis() - startTime) / 1000);
+      let remainingTime = countdownTime - elapsedTime;
+
+      // เมื่อหมดเวลา
+      if (remainingTime <= 0) {
+        remainingTime = 0;
+        appState = 'ALERT';
+        
+        // เล่นเสียงเตือน 1 ครั้ง
+        if (!hasPlayedAlert && synth) {
+          synth.triggerAttackRelease(["C4", "E4"], "4n");
+          hasPlayedAlert = true;
+        }
+      }
+
+      // สถิติ
+      fill(100, 200, 100);
+      textSize(24);
+      text(`จำนวนครั้งที่พักวันนี้: ${completedSets} ครั้ง`, width / 2, 50);
+
+      // ตัวเลขนับเวลา
+      fill(255);
+      textSize(120);
+      let mins = floor(remainingTime / 60);
+      let secs = remainingTime % 60;
+      let timeString = nf(mins, 2) + ':' + nf(secs, 2);
+      text(timeString, width / 2, height / 2);
+
+      // ข้อความแนะนำ
+      fill(200);
+      textSize(32);
+      text("ลุยงานต่อ! ระบบจะเตือนเมื่อครบเวลา", width / 2, height / 2 + 100);
+    }
+
+    function drawAlertScreen() {
+      fill(255, 100, 100);
+      textSize(64);
+      text("หมดเวลาทำงานแล้ว!", width / 2, height / 2 - 80);
+      
+      fill(255);
+      textSize(32);
+      text("ได้เวลายืดเหยียดร่างกาย พักสายตาจากจอ", width / 2, height / 2 - 20);
+
+      // ปุ่มเปิดกล้อง
+      fill(70, 150, 255);
+      rectMode(CENTER);
+      rect(width / 2, height / 2 + 80, 350, 60, 30);
+      
+      fill(255);
+      textSize(24);
+      text("เริ่มยืดเหยียด (เปิดกล้อง)", width / 2, height / 2 + 80);
+    }
+
+    function drawStretchingScreen() {
+      let videoX = width / 2 - video.width / 2;
+      let videoY = height / 2 - video.height / 2;
+      
+      // วาดวิดีโอแบบกลับด้าน (Mirror) เพื่อไม่ให้ผู้ใช้สับสนซ้ายขวา
+      push();
+      translate(videoX + video.width, videoY);
+      scale(-1, 1);
+      image(video, 0, 0);
+      pop();
+
+      // วาดจุดข้อต่อแบบกลับด้าน
+      drawKeypoints(videoX, videoY);
+
+      // ตรวจสอบท่าทาง
+      let isCorrect = false;
+      if (poses.length > 0) {
+        isCorrect = checkCurrentPose(poses[0]);
+      }
+
+      // จับเวลาการทำท่า
+      if (isCorrect) {
+        currentHoldTime += deltaTime; 
+      }
+
+      let poseData = stretchingPoses[currentPoseIndex];
+      let targetTimeMs = poseData.holdTime * 1000;
+
+      // เช็กการเปลี่ยนท่า (ต้องทำท่าสำเร็จเท่านั้นถึงจะเปลี่ยน)
+      if (currentHoldTime >= targetTimeMs) {
+        
+        // เสียงผ่านแต่ละท่า
+        if (synth) synth.triggerAttackRelease("G4", "8n");
+        
+        currentPoseIndex++;
+        currentHoldTime = 0;
+        
+        // ถ้าทำครบ 5 ท่าแล้ว
+        if (currentPoseIndex >= stretchingPoses.length) {
+          completedSets++;
+          startTime = millis();       // รีเซ็ตเวลานับถอยหลัง
+          hasPlayedAlert = false;     // รีเซ็ตสถานะเสียงเตือน
+          appState = 'COUNTDOWN';     // กลับไปหน้าจับเวลา
+          currentPoseIndex = 0;
+          
+          // เสียงฉลองทำครบเซ็ต
+          if (synth) synth.triggerAttackRelease(["C4", "E4", "G4", "C5"], "2n");
+          
+          return; 
+        }
+      }
+
+      // --- วาด UI การยืดเหยียด ---
+      fill(255);
+      textSize(32);
+      text(poseData.name, width / 2, videoY - 80);
+
+      // วาดรูปภาพตัวอย่างท่า (เปลี่ยนจากโหลดรูป เป็นวาด Stick Figure)
+      let imgX = max(videoX / 2, 120); 
+      let imgY = height / 2;
+      
+      drawPoseExample(currentPoseIndex, imgX, imgY);
+      
+      fill(255);
+      textSize(18);
+      text("ท่าตัวอย่าง", imgX, imgY - 120);
+
+      // หลอดพลัง
+      fill(80);
+      rectMode(CENTER);
+      rect(width / 2, videoY - 30, 400, 20, 10);
+      
+      let progressPercent = constrain(currentHoldTime / targetTimeMs, 0, 1);
+      fill(100, 255, 100);
+      rectMode(CORNER);
+      rect(width / 2 - 200, videoY - 40, 400 * progressPercent, 20, 10);
+      rectMode(CENTER); 
+
+      // ข้อความสถานะ AI
+      fill(isCorrect ? color(100, 255, 100) : color(255, 200, 100));
+      textSize(20);
+      let statusText = isCorrect ? "เยี่ยมมาก! ค้างไว้..." : "กำลังจัดท่าทาง... (ขยับให้พอดีกล้อง)";
+      text(statusText, width / 2, videoY - 5);
+    }
+
+    // วาดจุดข้อต่อร่างกาย
+    function drawKeypoints(offsetX, offsetY) {
+      for (let i = 0; i < poses.length; i++) {
+        let pose = poses[i];
+        for (let j = 0; j < pose.keypoints.length; j++) {
+          let keypoint = pose.keypoints[j];
+          if (keypoint.confidence > 0.1) {
+            fill(0, 255, 0);
+            noStroke();
+            // กลับด้านแกน X ให้ตรงกับวิดีโอที่ Mirror แล้ว
+            let mirroredX = video.width - keypoint.x;
+            circle(mirroredX + offsetX, keypoint.y + offsetY, 10);
+          }
+        }
+      }
+    }
+
+    // ฟังก์ชันวาดตัวอย่างท่าทาง (Stick Figure)
+    function drawPoseExample(index, x, y) {
+      push();
+      translate(x, y);
+      stroke(255);
+      strokeWeight(5);
+      noFill();
+      
+      // วาดหัวและลำตัว (พื้นฐาน)
+      let headX = 0;
+      let headY = -50;
+      
+      if (index === 2) headX = -15, headY = -45; // เอียงคอซ้าย
+      if (index === 3) headX = 15, headY = -45;  // เอียงคอขวา
+      
+      circle(headX, headY, 30); // หัว
+      line(0, -35, 0, 30);      // ลำตัว
+      
+      // วาดแขนตามท่าทาง
+      if (index === 0) { // ชูแขน
+        line(0, -20, -25, -60);
+        line(0, -20, 25, -60);
+      } else if (index === 1) { // พนมมือ
+        line(0, -20, -20, 0);   // แขนบนซ้าย
+        line(-20, 0, 0, -10);   // แขนล่างซ้ายมาที่อก
+        line(0, -20, 20, 0);    // แขนบนขวา
+        line(20, 0, 0, -10);    // แขนล่างขวามาที่อก
+      } else if (index === 2 || index === 3) { // เอียงคอ (ปล่อยแขน)
+        line(0, -20, -20, 10);
+        line(0, -20, 20, 10);
+      } else if (index === 4) { // กอดตัวเอง
+        line(0, -20, 25, -5);   
+        line(25, -5, -15, -20);
+        line(0, -15, -25, 0);   
+        line(-25, 0, 15, -15);
+      }
+      pop();
+    }
+
+    // ตรรกะตรวจสอบท่าทาง
+    function checkCurrentPose(pose) {
+      let getKP = (name) => pose.keypoints.find(k => k.name === name);
+      let nose = getKP('nose');
+      let lSh = getKP('left_shoulder'); 
+      let rSh = getKP('right_shoulder');
+      let lWr = getKP('left_wrist');
+      let rWr = getKP('right_wrist');
+
+      if (!nose || !lSh || !rSh || !lWr || !rWr) return false;
+      if (nose.confidence < 0.1 || lSh.confidence < 0.1 || rSh.confidence < 0.1) return false;
+
+      let shoulderDist = dist(lSh.x, lSh.y, rSh.x, rSh.y);
+
+      if (currentPoseIndex === 0) { // ชูแขน
+        if (lWr.confidence < 0.1 || rWr.confidence < 0.1) return false;
+        return (lWr.y < nose.y) && (rWr.y < nose.y);
+      }
+      else if (currentPoseIndex === 1) { // พนมมือระดับอก
+        if (lWr.confidence < 0.1 || rWr.confidence < 0.1) return false;
+        let wristsDist = dist(lWr.x, lWr.y, rWr.x, rWr.y);
+        // ข้อมือต้องอยู่ใกล้กัน และอยู่ต่ำกว่าระดับจมูก
+        return (wristsDist < shoulderDist * 0.8) && (lWr.y > nose.y) && (rWr.y > nose.y);
+      }
+      else if (currentPoseIndex === 2) { // เอียงคอซ้าย
+        let noseToLSh = dist(nose.x, nose.y, lSh.x, lSh.y);
+        let noseToRSh = dist(nose.x, nose.y, rSh.x, rSh.y);
+        return noseToLSh < (noseToRSh * 0.75);
+      }
+      else if (currentPoseIndex === 3) { // เอียงคอขวา
+        let noseToLSh = dist(nose.x, nose.y, lSh.x, lSh.y);
+        let noseToRSh = dist(nose.x, nose.y, rSh.x, rSh.y);
+        return noseToRSh < (noseToLSh * 0.75);
+      }
+      else if (currentPoseIndex === 4) { // แตะไหล่ตรงข้าม
+        if (lWr.confidence < 0.1 || rWr.confidence < 0.1) return false;
+        let lWrToRSh = dist(lWr.x, lWr.y, rSh.x, rSh.y);
+        let rWrToLSh = dist(rWr.x, rWr.y, lSh.x, lSh.y);
+        return (lWrToRSh < shoulderDist * 0.9) && (rWrToLSh < shoulderDist * 0.9);
+      }
+      return false;
+    }
+
+    // ฟังก์ชันจัดการการคลิกเมาส์
+    async function mousePressed() {
+      if (appState === 'ALERT') {
+        let btnX = width / 2;
+        let btnY = height / 2 + 80;
+        if (mouseX > btnX - 175 && mouseX < btnX + 175 && mouseY > btnY - 30 && mouseY < btnY + 30) {
+          appState = 'STRETCHING';
+          currentPoseIndex = 0;
+          currentHoldTime = 0;
+        }
+      } 
+    }
+
+    // ปรับขนาด Canvas เมื่อยืดหดหน้าต่าง
+    function windowResized() {
+      resizeCanvas(windowWidth, windowHeight);
+    }
+  </script>
+</body>
+</html>
